@@ -46,12 +46,13 @@ public class OverlayView extends View {
                 if (results.get(i).getConfidence() > 0.5) {
                     RectF box = reCalcSize(results.get(i).getLocation());
                     String title = results.get(i).getTitle() + String.format(" %2.2f", results.get(i).getConfidence()*100) + "%";
-                    paint.setColor(Color.RED); //color of text
+                    paint.setColor(Color.BLUE); //color of text
                     paint.setStyle(Paint.Style.STROKE);
                     canvas.drawRect(box, paint);
-                    paint.setStrokeWidth(2.0f); // thickness
+                    paint.setStrokeWidth(3.0f); // thickness
                     paint.setStyle(Paint.Style.FILL_AND_STROKE);
-                    canvas.drawText(title, box.left, box.top, paint); //location of text
+                    canvas.drawText(title, box.left, box.bottom, paint); //location of text
+                    paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 20, getResources().getDisplayMetrics())); // text size
                 }
             }
         }

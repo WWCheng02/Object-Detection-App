@@ -153,23 +153,15 @@ public abstract class CameraActivity extends Activity
     }
 
     protected void setFragment() {
-        String cameraId = chooseCamera();
-        Fragment fragment;
-            Camera2BasicFragment camera2Fragment = Camera2BasicFragment.newInstance(
-                            new Camera2BasicFragment.ConnectionCallback() {
-                                @Override
-                                public void onPreviewSizeChosen(final Size size, final int rotation) {
-                                    previewHeight = size.getHeight();
-                                    previewWidth = size.getWidth();
-                                    CameraActivity.this.onPreviewSizeChosen(size, rotation);
-                                }
-                            },
-                            this,
-                            getLayoutId(),
-                            getWantedPreviewSize());
-            camera2Fragment.setCamera(cameraId);
+        Camera2BasicFragment cameraConnectionFragment = new Camera2BasicFragment();
+        cameraConnectionFragment.addConnectionListener((final Size size, final int rotation) ->
+                CameraActivity.this.onPreviewSizeChosen(size, rotation));
+        cameraConnectionFragment.addImageAvailableListener(this);
 
-        getFragmentManager().beginTransaction().replace(R.id.container, camera2Fragment).commit();
+        getFragmentManager()
+                .beginTransaction()
+                .replace(R.id.container, cameraConnectionFragment)
+                .commit();
     }
 
     private void requestPermission() {

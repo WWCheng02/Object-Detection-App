@@ -63,7 +63,7 @@ public class MainActivity extends CameraActivity implements OnImageAvailableList
                 TEXT_SIZE_DIP, getResources().getDisplayMetrics());
 
         try {
-            model = (TFObjectDetectionAPIModel) TFObjectDetectionAPIModel.create(getAssets(),  modelFilename,  labelFilename,  inputSize);
+            model = (TFObjectDetectionAPIModel) TFObjectDetectionAPIModel.create(getAssets());
             Log.i(LOGGING_TAG, "Model Initiated successfully.");
             Toast.makeText(getApplicationContext(), "Detector opened", Toast.LENGTH_SHORT).show();
         } catch(IOException e) {
@@ -118,7 +118,7 @@ public class MainActivity extends CameraActivity implements OnImageAvailableList
         runInBackground(new Runnable() {
             @Override
             public void run() {
-                List<ImageClassifier.Recognition> results=model.recognizeImage(imageBitmapForModel);
+                List<ImageClassifier.Recognition> results=model.detectObjects(imageBitmapForModel);
                 overlayView.setResults(results);
                 requestRender();
                 computing=false;
