@@ -9,28 +9,28 @@ public class AutoFitTextureView extends TextureView {
     private int ratioWidth = 0;
     private int ratioHeight = 0;
 
-    // context to associate this view
+    // context of the texture view
     public AutoFitTextureView(Context context) {
         this(context, null);
     }
 
-    //attributes of the XML tag that is inflating the view
-    public AutoFitTextureView(Context context, AttributeSet attrs) {
-        this(context, attrs, 0);  //not look for defaults
+    //The attributes of the XML tag of the extended view
+    public AutoFitTextureView(Context context, AttributeSet attributes) {
+        this(context, attributes, 0);  
     }
 
-    //An attribute in the current theme that contains a reference to a style resource that supplies default values for the view
-    public AutoFitTextureView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
+    //The attributes in theme, including references to style resources, provide default values​​for the view
+    public AutoFitTextureView(Context context, AttributeSet attributes, int defaultStyle) {
+        super(context, attributes, defaultStyle);
     }
 
     //aspect ratio is the ratio of the camera, eg 4:3, 16:9, square
-    public void setAspectRatio(int width, int height) {
-        if (width < 0 || height < 0) { // must positive
+    public void setCameraAspectRatio(int cameraWidth, int cameraHeight) {
+        if (cameraWidth < 0 || cameraHeight < 0) { // the size of camera screen must positive
             throw new IllegalArgumentException("Size cannot be negative.");
         }
-        ratioWidth = width;
-        ratioHeight = height;
+        ratioWidth = cameraWidth;
+        ratioHeight = cameraHeight;
         requestLayout(); //call this when the view cannot fit the bound
     }
 
