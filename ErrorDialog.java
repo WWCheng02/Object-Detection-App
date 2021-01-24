@@ -7,7 +7,7 @@ import android.app.DialogFragment;
 import android.content.DialogInterface;
 import android.os.Bundle;
 
-/** Shows an error message dialog. */
+// Shows an error message dialog
 public class ErrorDialog extends DialogFragment {
 
     private static final String ARG_MESSAGE = "message";
@@ -20,6 +20,7 @@ public class ErrorDialog extends DialogFragment {
         return dialog;
     }
 
+    //create error dialog
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         final Activity activity = getActivity();
