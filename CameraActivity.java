@@ -2,9 +2,7 @@ package com.example.myapplication;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.Fragment;
 import android.content.Context;
-import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
@@ -12,25 +10,19 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Bundle;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.util.Size;
 import android.view.WindowManager;
 import android.widget.Toast;
-import com.example.myapplication.Camera2BasicFragment;
-import com.example.myapplication.OverlayView;
 
-public abstract class CameraActivity extends Activity
-        implements OnImageAvailableListener {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
     private static final String LOGGING_TAG = "Application";
     private static final int PERMISSIONS_REQUEST = 1;
-    private boolean useCamera2API;
     private Handler handler;
     private HandlerThread handlerThread;
     private  int previewHeight=0;
@@ -39,24 +31,25 @@ public abstract class CameraActivity extends Activity
     protected abstract int getLayoutId();
     protected abstract Size getWantedPreviewSize();
 
+    //create camera activity
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(null);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); //to keep the screen on
 
         setContentView(R.layout.activity_main);
 
+        //if has permission
         if (hasPermission()) {
             setFragment();
         } else {
-            requestPermission();
+            requestPermission(); //no permission then make request
         }
     }
 
     @Override
     public synchronized void onResume() {
         super.onResume();
-
         handlerThread = new HandlerThread("inference");
         handlerThread.start();
         handler = new Handler(handlerThread.getLooper());
@@ -86,63 +79,62 @@ public abstract class CameraActivity extends Activity
         }
     }
 
+    //request permission result
     @Override
-    public void onRequestPermissionsResult(final int requestCode, final String[] permissions,
-                                           final int[] grantResults) {
+    public void onRequestPermissionsResult(final int requestCode, final String[] permissions, final int[] grantResults) {
         switch (requestCode) {
             case PERMISSIONS_REQUEST: {
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                        && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) { //if permission granted
                     setFragment();
                 } else {
-                    requestPermission();
+                    requestPermission(); //else request permission
                 }
             }
         }
     }
 
+    //if permission granted
     private boolean hasPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                    && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+            //check permission for camera and external storage
+            return checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
         } else {
             return true;
         }
     }
 
-    // Returns true if the device supports the required hardware level, or better.
-    private boolean isHardwareLevelSupported(
-            CameraCharacteristics characteristics, int requiredLevel) {
-        int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+    // Returns true if the device supports the required hardware level
+    private boolean isHardwareLevelSupported(CameraCharacteristics characteristics, int supportedLevel) {
+        int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL); //get device supported hardware level
+        //if device level equal to required minimum level
         if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
-            return requiredLevel == deviceLevel;
+            return supportedLevel == deviceLevel;
         }
-        // deviceLevel is not LEGACY, can use numerical sort
-        return requiredLevel <= deviceLevel;
+        // deviceLevel is not legacy, can use numerical sort
+        return supportedLevel <= deviceLevel;
     }
 
     private String chooseCamera() {
-        final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE); //get camera service
         try {
+            //loop through each camera
             for (final String cameraId : manager.getCameraIdList()) {
                 CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
-                // We don't use a front facing camera in this sample.
+                // do not use a front facing camera
                 final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
                 if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
                     continue;
                 }
 
-                final StreamConfigurationMap map =
-                        characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                final StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
                 if (map == null) {
                     continue;
                 }
 
-                boolean useCamera2API = isHardwareLevelSupported(characteristics,
-                        CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+                //if camera2API can be fully supported
+                boolean useCamera2API = isHardwareLevelSupported(characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
                 LOGGER.i("Camera API lv2?: %s", useCamera2API);
                 return cameraId;
             }
@@ -154,8 +146,7 @@ public abstract class CameraActivity extends Activity
 
     protected void setFragment() {
         Camera2BasicFragment cameraConnectionFragment = new Camera2BasicFragment();
-        cameraConnectionFragment.addConnectionListener((final Size size, final int rotation) ->
-                CameraActivity.this.onPreviewSizeChosen(size, rotation));
+        cameraConnectionFragment.addConnectionListener((final Size size, final int rotation) -> CameraActivity.this.onPreviewSizeSelected(size, rotation));
         cameraConnectionFragment.addImageAvailableListener(this);
 
         getFragmentManager()
@@ -164,12 +155,11 @@ public abstract class CameraActivity extends Activity
                 .commit();
     }
 
+    //request permission for camera and external storage
     private void requestPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)
-                    || shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-                Toast.makeText(CameraActivity.this,
-                        "Camera AND storage permission are required for this app", Toast.LENGTH_LONG).show();
+            if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) || shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                Toast.makeText(CameraActivity.this, "Camera and storage permission are needed to run this application", Toast.LENGTH_LONG).show();
             }
             requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISSIONS_REQUEST);
         }
@@ -189,5 +179,5 @@ public abstract class CameraActivity extends Activity
         }
     }
 
-    protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
+    protected abstract void onPreviewSizeSelected(final Size size, final int rotation);
 }
