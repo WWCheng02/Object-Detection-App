@@ -23,80 +23,74 @@ import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 
-public class TFObjectDetectionAPIModel {
-    private static final String MODEL_FILENAME = "detect.tflite";
-    private static final String LABEL_FILENAME = "labelmap.txt";
-    private static final int INPUT_SIZE = 300;
-    private static final int NUM_BYTES_PER_CHANNEL = 1;
-    private static final float IMAGE_MEAN = 128.0f;
-    private static final float IMAGE_STD = 128.0f;
-    private static final int NUM_DETECTIONS = 10;
+public class TFObjectDetectionAPIModel implements ImageClassifier {
+    private int inputSize;
     private static final String LOGGING_TAG = TFObjectDetectionAPIModel.class.getName();
+    private static final float IMAGE_MEAN = 128f;
+    private static final float IMAGE_STD = 128f;
+    private static final int NUM_DETECTIONS = 10; //maximum return 10 results
 
-    private ByteBuffer imgData;
+    private boolean isModelQuantized;
+
+    private ByteBuffer imageData;
     private Interpreter tfLite;
     private int[] intValues;
-    private float[][][] outputLocations;
-    private float[][] outputClasses;
-    private float[][] outputScores;
-    private float[] numDetections;
-    private Vector<String> labels = new Vector<String>();
+    private float[][][] outputLocation; //array to store location of boundary boxes
+    private float[][] outputClass; //array to store classes of boundary box
+    private float[][] outputConfidenceScore; //array to store scores of boundary box
+    private float[] detectionsNo;//no of boundary box
+    private Vector<String> labels = new Vector<String>(); //pre allocated buffers
 
-    private TFObjectDetectionAPIModel(final AssetManager assetManager) throws IOException {
-        init(assetManager);
+    private TFObjectDetectionAPIModel() {
+
     }
 
-    private void init(final AssetManager assetManager) throws IOException {
-        imgData = ByteBuffer.allocateDirect(1 * INPUT_SIZE * INPUT_SIZE * 3 * NUM_BYTES_PER_CHANNEL);
-        imgData.order(ByteOrder.nativeOrder());
-        intValues = new int[INPUT_SIZE * INPUT_SIZE];
-        outputLocations = new float[1][NUM_DETECTIONS][4];
-        outputClasses = new float[1][NUM_DETECTIONS];
-        outputScores = new float[1][NUM_DETECTIONS];
-        numDetections = new float[1];
+    public static ImageClassifier create(AssetManager assetManager, String modelFilename, String labelFilename, int inputSize, boolean isQuantized)
+            throws IOException {
+        final TFObjectDetectionAPIModel model = new TFObjectDetectionAPIModel();
 
-        InputStream labelsInput = assetManager.open(LABEL_FILENAME);
-        BufferedReader br = new BufferedReader(new InputStreamReader(labelsInput));
+        //read model file
+        String actualFilename = labelFilename.split("file:///android_asset/")[1];
+        InputStream labelInput = assetManager.open(actualFilename);
+        BufferedReader br = new BufferedReader(new InputStreamReader(labelInput));
         String line;
         while ((line = br.readLine()) != null) {
-            labels.add(line);
+            Log.w(LOGGING_TAG,line);
+            model.labels.add(line);
         }
         br.close();
 
+        model.inputSize = inputSize;
+
         try {
-            tfLite = new Interpreter(loadModelFile(assetManager));
-            Log.i(LOGGING_TAG, "Input tensor shapes:");
-            for (int i=0; i<tfLite.getInputTensorCount(); i++) {
-                int[] shape = tfLite.getInputTensor(i).shape();
-                String stringShape = "";
-                for(int j = 0; j < shape.length; j++) {
-                    stringShape = stringShape + ", " + shape[j];
-                }
-                Log.i(LOGGING_TAG, "Shape of input tensor " + i + ": " + stringShape);
-            }
-            Log.i(LOGGING_TAG, "Output tensor shapes:");
-            for (int i=0; i<tfLite.getOutputTensorCount(); i++) {
-                int[] shape = tfLite.getOutputTensor(i).shape();
-                String stringShape = "";
-                for(int j = 0; j < shape.length; j++) {
-                    stringShape = stringShape + ", " + shape[j];
-                }
-                Log.i(LOGGING_TAG, "Shape of output tensor " + i + ": " + tfLite.getOutputTensor(i).name() + " " + stringShape);
-            }
+            model.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
         } catch (Exception e) {
-            e.printStackTrace();
             throw new RuntimeException(e);
         }
 
+        model.isModelQuantized = isQuantized;
+        // Pre-allocate buffers.
+        int byteNoPerChannel;
+        if (isQuantized) {
+            byteNoPerChannel = 1; // Quantized
+        } else {
+            byteNoPerChannel = 4; // Floating point
+        }
+        model.imageData = ByteBuffer.allocateDirect(1 * model.inputSize * model.inputSize * 3 * byteNoPerChannel);
+        model.imageData.order(ByteOrder.nativeOrder());
+        model.intValues = new int[model.inputSize * model.inputSize];
+
+        model.outputLocation = new float[1][NUM_DETECTIONS][4]; //to store boundary box location
+        model.outputClass = new float[1][NUM_DETECTIONS]; //to store output class name
+        model.outputConfidenceScore = new float[1][NUM_DETECTIONS]; //to store confidence score
+        model.detectionsNo = new float[1]; //to store detected objects
+        return model;
     }
 
-    public static TFObjectDetectionAPIModel create(final AssetManager assetManager) throws IOException {
-        return new TFObjectDetectionAPIModel(assetManager);
-    }
-
-    private static MappedByteBuffer loadModelFile(AssetManager assets)
+    //load model file
+    private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
             throws IOException {
-        AssetFileDescriptor fileDescriptor = assets.openFd(MODEL_FILENAME);
+        AssetFileDescriptor fileDescriptor = assets.openFd(modelFilename);
         FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
         FileChannel fileChannel = inputStream.getChannel();
         long startOffset = fileDescriptor.getStartOffset();
@@ -104,47 +98,70 @@ public class TFObjectDetectionAPIModel {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
     }
 
-    public void close() {
-        tfLite.close();
-    }
 
+
+    @Override
     public List<ImageClassifier.Recognition> detectObjects(final Bitmap bitmap) {
+        //process image from int to float
         bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-        imgData.rewind();
-        for (int i = 0; i < INPUT_SIZE; ++i) {
-            for (int j = 0; j < INPUT_SIZE; ++j) {
-                int pixelValue = intValues[i * INPUT_SIZE + j];
-                imgData.put((byte) ((pixelValue >> 16) & 0xFF));
-                imgData.put((byte) ((pixelValue >> 8) & 0xFF));
-                imgData.put((byte) (pixelValue & 0xFF));
+        imageData.rewind();
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                int pixelValue = intValues[i * inputSize + j];
+                if (isModelQuantized) {
+                    // Quantized model
+                    imageData.put((byte) ((pixelValue >> 16) & 0xFF));
+                    imageData.put((byte) ((pixelValue >> 8) & 0xFF));
+                    imageData.put((byte) (pixelValue & 0xFF));
+                } else { // Float model
+                    imageData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                    imageData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                    imageData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                }
             }
         }
 
-        Object[] inputArray = {imgData};
+        Object[] inputArray = {imageData};
         Map<Integer, Object> outputMap = new HashMap<>();
-        outputMap.put(0, outputLocations);
-        outputMap.put(1, outputClasses);
-        outputMap.put(2, outputScores);
-        outputMap.put(3, numDetections);
+        outputMap.put(0, outputLocation);
+        outputMap.put(1, outputClass);
+        outputMap.put(2, outputConfidenceScore);
+        outputMap.put(3, detectionsNo);
+
         tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
 
-        final ArrayList<ImageClassifier.Recognition> recognitions = new ArrayList<>(NUM_DETECTIONS);
+        final ArrayList<Recognition> recognitions = new ArrayList<>(NUM_DETECTIONS); //to store a list of objects detected
         for (int i = 0; i < NUM_DETECTIONS; ++i) {
             final RectF detection =
                     new RectF(
-                            outputLocations[0][i][1] * INPUT_SIZE,
-                            outputLocations[0][i][0] * INPUT_SIZE,
-                            outputLocations[0][i][3] * INPUT_SIZE,
-                            outputLocations[0][i][2] * INPUT_SIZE);
+                            outputLocation[0][i][1] * inputSize,
+                            outputLocation[0][i][0] * inputSize,
+                            outputLocation[0][i][3] * inputSize,
+                            outputLocation[0][i][2] * inputSize);
+
+            //in label file, class labels start from 1 to no of classes + 1
+            //outputClass start from 0 to no of classes
             int labelOffset = 1;
             recognitions.add(
-                    new ImageClassifier.Recognition(
-                            i+"",
-                            labels.get((int) outputClasses[0][i] + labelOffset),
-                            outputScores[0][i],
-                            detection));
+                    new Recognition(
+                            "" + i, //id
+                            labels.get((int) outputClass[0][i] + labelOffset), //class
+                            outputConfidenceScore[0][i], //confidence score
+                            detection)); //location of boundary box
         }
         return recognitions;
     }
+
+    @Override
+    public void enableStatLogging(final boolean logStats) {}
+
+    @Override
+    public String getStatString() {
+        return "";
+    }
+
+    @Override
+    public void close() {}
+
 }
