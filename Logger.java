@@ -7,7 +7,8 @@ import java.util.*;
 public class Logger {
     private static final String DEFAULT_TAG = "tensorflow"; //identify source of log message
     private int DEFAULT_MIN_LOG_LEVEL = Log.DEBUG;
-    // Classes to be ignored when examining the stack trace
+
+    // Classes to be ignored when do stack trace
     private static final Set<String> IGNORED_CLASS_NAMES;
     static {
         IGNORED_CLASS_NAMES = new HashSet<String>(3);
@@ -71,7 +72,8 @@ public class Logger {
 
         for (StackTraceElement element: stackTrace) {
             final String className = element.getClassName();
-            if (!IGNORED_CLASS_NAMES.contains((className))) { //if is not complex class name/package
+            if (!IGNORED_CLASS_NAMES.contains((className))) {
+                //if is not complex class name/package
                 String[] classParts = className.split("\\.");
                 return classParts[classParts.length - 1];
             }
