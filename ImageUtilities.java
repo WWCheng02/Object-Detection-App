@@ -10,14 +10,14 @@ public class ImageUtilities {
     @SuppressWarnings("unused")
     private static Logger LOGGER = new Logger();
 
-    // This value is 2 ^ 18 - 1, and is used to clamp the RGB values before their ranges are normalized to eight bits
+    // it is 2 ^ 18 - 1, used to clamp the RGB values before their ranges are normalized to eight bits
     private static int kMaxChannelValue = 262143;
 
+    //convert YUV to RGB
     public static int[] convertYUVToARGB(final Image image, final int previewWidth, final int previewHeight) {
         final Image.Plane[] planes = image.getPlanes();
         byte[][] yuvBytes = fillBytes(planes);
-        return ImageUtilities.convertYUV420ToARGB8888(yuvBytes[0], yuvBytes[1], yuvBytes[2], previewWidth,
-                previewHeight, planes[0].getRowStride(), planes[1].getRowStride(), planes[1].getPixelStride());
+        return ImageUtilities.convertYUV420ToARGB8888(yuvBytes[0], yuvBytes[1], yuvBytes[2], previewWidth, previewHeight, planes[0].getRowStride(), planes[1].getRowStride(), planes[1].getPixelStride());
     }
 
     private static byte[][] fillBytes(final Image.Plane[] planes) {
@@ -48,7 +48,7 @@ public class ImageUtilities {
         int g = (y1192 - 833 * v - 400 * u);
         int b = (y1192 + 2066 * u);
 
-        // Clipping RGB values to be inside boundaries [ 0 , kMaxChannelValue ]
+        // Clip RGB values to be inside boundaries [ 0 , kMaxChannelValue ]
         r = r > kMaxChannelValue ? kMaxChannelValue : (r < 0 ? 0 : r);
         g = g > kMaxChannelValue ? kMaxChannelValue : (g < 0 ? 0 : g);
         b = b > kMaxChannelValue ? kMaxChannelValue : (b < 0 ? 0 : b);
@@ -57,6 +57,7 @@ public class ImageUtilities {
     }
 
 
+    //convert YUV420 to ARGB8888
     public static int[] convertYUV420ToARGB8888(byte[] yData, byte[] uData, byte[] vData, int width, int height, int yRowStride, int uvRowStride, int uvPixelStride) {
         int [] out = new int[width*height];
         int yp = 0;
@@ -73,55 +74,49 @@ public class ImageUtilities {
         return out;
     }
 
-    /**
-     * Returns a transformation matrix from one reference frame into another.
-     * Handles cropping (if maintaining aspect ratio is desired) and rotation.
-     * sourceWidth- Width of source frame.
-     * sourceHeight - Height of source frame.
-     * destinationWidth - Width of destination frame.
-     *  destinationHeight - Height of destination frame.
-     * applyRotation - Amount of rotation to apply from one frame to another.
-     */
+    //compute allocated size
     public static int getYUVByteSize(final int width, final int height) {
-        // The luminance plane requires 1 byte per pixel.
+        // luminance plane needs 1 byte per pixel
         final int ySize = width * height;
 
-        // The UV plane works on 2x2 blocks, so dimensions with odd size must be rounded up.
-        // Each 2x2 block takes 2 bytes to encode, one each for U and V.
+        // UV plane works on 2x2 blocks, dimensions with odd size must be rounded up
+        // Each 2x2 block takes 2 bytes to encode, one each for U and V
         final int uvSize = ((width + 1) / 2) * ((height + 1) / 2) * 2;
 
         return ySize + uvSize;
     }
 
-    public static Matrix getTransformationMatrix(int sourceWidth, int sourceHeight, int destinationWidth, int destinationHeight, int applyRotation, boolean maintainAspectRatio) {
+
+     //returns a transformation matrix, do cropping and rotation
+    public static Matrix getTransformationMatrix(int sourceWidth, int sourceHeight, int destinationWidth, int destinationHeight, int rotationApplied, boolean maintainAspectRatio) {
+        //rotationApplied - amount of rotation to apply, must change by 90
+        //maintainAspectRatio - true when scaling remain same
         Matrix matrix = new Matrix();
 
-        if (applyRotation != 0) {
-            if (applyRotation % 90 != 0) {
-                LOGGER.w("Rotation of %d % 90 != 0", applyRotation);
+        if (rotationApplied != 0) {
+            if (rotationApplied % 90 != 0) {
+                LOGGER.w("Rotation of %d % 90 != 0", rotationApplied);
             }
 
-            // Translate so center of image is at origin
+            // Do translate to let center of image as origin
             matrix.postTranslate(-sourceWidth / 2.0f, -sourceHeight / 2.0f);
 
             // Rotate around origin
-            matrix.postRotate(applyRotation);
+            matrix.postRotate(rotationApplied);
         }
 
-        // Account for the already applied rotation, if any, and then determine how much scaling is needed for each axis.
-        boolean transpose = (Math.abs(applyRotation) + 90) % 180 == 0;
+        boolean transpose = (Math.abs(rotationApplied) + 90) % 180 == 0;
 
         int inWidth = transpose ? sourceHeight : sourceWidth;
         int inHeight = transpose ? sourceWidth : sourceHeight;
 
-        // Apply scaling if necessary
+        // Do scaling if needed
         if (inWidth != destinationWidth || inHeight != destinationHeight) {
             float scaleFactorX = destinationWidth / (float) inWidth;
             float scaleFactorY = destinationHeight / (float) inHeight;
 
-            //If true, will ensure that scaling in x and y remains constant, cropping the image if necessary
             if (maintainAspectRatio) {
-                // Scale by minimum factor so that destination is filled completely while maintaining the aspect ratio. Some image may fall off the edge
+                // Scale by minimum factor to allow destination to be filled fully
                 float scaleFactor = Math.max(scaleFactorX, scaleFactorY);
                 matrix.postScale(scaleFactor, scaleFactor);
             } else {
@@ -130,7 +125,7 @@ public class ImageUtilities {
             }
         }
 
-        if (applyRotation != 0) {
+        if (rotationApplied != 0) {
             // Translate back from origin centered reference to destination frame
             matrix.postTranslate(destinationWidth / 2.0f, destinationHeight / 2.0f);
         }
