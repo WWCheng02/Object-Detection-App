@@ -4,7 +4,6 @@ import android.graphics.Bitmap;
 import android.graphics.RectF;
 
 import java.util.List;
-import java.util.Objects;
 
 //object recognition interface
 public interface ImageClassifier {
@@ -20,9 +19,10 @@ public interface ImageClassifier {
         //confidence score
         private final Float confidence;
 
-        //loccation
+        //location of detected object
         private RectF location;
 
+        //constructor
         public Recognition(String id, String title, Float confidence, RectF location) {
             this.id = id;
             this.title = title;
@@ -69,15 +69,16 @@ public interface ImageClassifier {
                 resultString += location + " ";
             }
 
-            return resultString.trim(); //trim white space from both ends of string
+            return resultString.trim(); //trim white space of both ends of string
         }
     }
 
-    List<Recognition> recognizeImage(Bitmap bitmap);
+    List<Recognition> detectObjects(Bitmap bitmap);
 
     void enableStatLogging(final boolean debug);
 
     String getStatString();
 
     void close();
+
 }
