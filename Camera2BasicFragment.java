@@ -2,6 +2,7 @@ package com.example.myapplication;
 
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+@SuppressLint("ValidFragment")
 public class Camera2BasicFragment extends Fragment {
 
     private static  int screenWidth = Resources.getSystem().getDisplayMetrics().widthPixels;
@@ -60,10 +62,12 @@ public class Camera2BasicFragment extends Fragment {
     private ImageReader previewReader; //image capture
     private CaptureRequest.Builder previewRequestBuilder; //camera preview
     private CaptureRequest previewRequest; //preview request
-    private  Semaphore cameraOpenCloseLock = new Semaphore(1);//// prevent app from exiting when closing the camera
+    private Semaphore cameraOpenCloseLock = new Semaphore(1);//// prevent app from exiting when closing the camera
     private OnImageAvailableListener imageListener; //receive frame
-    private ConnectionListener cameraConnectionListener;
-    private static  int MIN_PREVIEW_SIZE = 500;
+    private static int MIN_PREVIEW_SIZE = 500;
+    private final int layout;
+    private final ConnectionCallback cameraConnectionCallback;
+    private final Size inputSize;
 
     //convert screen rotation to JPEG orientation
     private static  SparseIntArray ORIENTATIONS = new SparseIntArray(4);
@@ -131,16 +135,16 @@ public class Camera2BasicFragment extends Fragment {
         super.onPause();
     }
 
-    public void addConnectionListener( ConnectionListener cameraConnectionListener) {
-        this.cameraConnectionListener = cameraConnectionListener;
+    public void setCamera(String cameraId) {
+        this.cameraId = cameraId;
+    }
+
+    public interface ConnectionCallback {
+        void onPreviewSizeSelected(Size size, int cameraRotation);
     }
 
     public void addImageAvailableListener( OnImageAvailableListener imageListener) {
         this.imageListener = imageListener;
-    }
-
-    public interface ConnectionListener {
-        void onPreviewSizeSelected(Size size, int cameraRotation);
     }
 
     private static Size selectOptimalSize( Size[] choices) {
@@ -179,6 +183,28 @@ public class Camera2BasicFragment extends Fragment {
             activity.runOnUiThread(() -> Toast.makeText(activity, text, Toast.LENGTH_SHORT).show());
         }
     }
+
+    public static Camera2BasicFragment newInstance(
+            final ConnectionCallback callback,
+            final OnImageAvailableListener imageListener,
+            final int layout,
+            final Size inputSize) {
+        return new Camera2BasicFragment(callback, imageListener, layout, inputSize);
+    }
+
+    @SuppressLint("ValidFragment")
+    private Camera2BasicFragment(
+            final ConnectionCallback connectionCallback,
+            final OnImageAvailableListener imageListener,
+            final int layout,
+            final Size inputSize) {
+        this.cameraConnectionCallback = connectionCallback;
+        this.imageListener = imageListener;
+        this.layout = layout;
+        this.inputSize = inputSize;
+    }
+
+
 
     private void setUpCameraOutputs() {
          CameraManager manager = (CameraManager) getActivity().getSystemService(Context.CAMERA_SERVICE);
@@ -226,7 +252,7 @@ public class Camera2BasicFragment extends Fragment {
             throw new IllegalStateException(("This device does not support Camera2 API"));
         }
 
-        cameraConnectionListener.onPreviewSizeSelected(previewSize, sensorOrientation);
+        cameraConnectionCallback.onPreviewSizeSelected(previewSize, sensorOrientation);
     }
 
     //open camera
@@ -407,13 +433,6 @@ public class Camera2BasicFragment extends Fragment {
             matrix.postRotate(180, centerX, centerY);
         }
         textureView.setTransform(matrix);
-    }
-
-    private void fixDeviceCameraOrientation(CaptureRequest.Builder previewRequestBuilder) {
-        int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
-        int jpegOrientation = (ORIENTATIONS.get(deviceRotation) + sensorOrientation + 270) % 360;
-        previewRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation);
-
     }
 
     //compare area of sizes
