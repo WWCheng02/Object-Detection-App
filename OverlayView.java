@@ -15,15 +15,15 @@ package com.example.myapplication;
 //simple View providing a render callback to other classes
 public class OverlayView extends View {
     private final List<DrawCallback> callbacks = new LinkedList<DrawCallback>();
-    private Paint paint;
-    private float detectionResultsViewHeight;
-    private List<ImageClassifier.Recognition> detectionResults;
+    //private Paint paint;
+    //private float detectionResultsViewHeight;
+    //private ImageClassifier.Recognition detectionResult;
     public OverlayView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        paint = new Paint();
+        // paint = new Paint();
     }
 
-    private int INPUT_SIZE=300;
+    //private int INPUT_SIZE=300;
 
     //interface to define callback of client class
     public interface DrawCallback {
@@ -34,6 +34,15 @@ public class OverlayView extends View {
         callbacks.add(callback);
     }
 
+    @Override
+    public synchronized void draw(final Canvas canvas) {
+        super.draw(canvas);
+        for (final DrawCallback callback : callbacks) {
+            callback.drawCallback(canvas);
+        }
+    }
+
+    /*
     //draw boundary box for detected objects
     @Override
     public synchronized void draw(Canvas canvas) {
@@ -41,31 +50,26 @@ public class OverlayView extends View {
         for (final DrawCallback callback : callbacks) {
             callback.drawCallback(canvas);
         }
-        // when got detectionResults
-        if (detectionResults !=null){
-            for (int i=0; i<detectionResults.size(); i++){
-                if (detectionResults.get(i).getConfidence() > 0.6) {
-                    RectF box = recalculateSize(detectionResults.get(i).getLocation()); //get the location of the detected objects
-                    String title = detectionResults.get(i).getTitle() + String.format(" %2.2f", detectionResults.get(i).getConfidence()*100) + "%"; //text to display
-                    paint.setColor(Color.BLUE); //color of text
-                    paint.setStyle(Paint.Style.STROKE); //set style
-                    canvas.drawRect(box, paint); //draw rectangle for boundary box
-                    paint.setStrokeWidth(3.0f); // thickness
-                    paint.setStyle(Paint.Style.FILL_AND_STROKE);
-                    canvas.drawText(title, box.left, box.bottom, paint); //location of text
-                    paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 20, getResources().getDisplayMetrics())); // text size
-                }
-            }
-        }
+
+        /*RectF box = recalculateSize(detectionResult.getLocation()); //get the location of the detected objects
+        String title = detectionResult.getTitle() + String.format(" %2.2f", detectionResult.getConfidence()*100) + "%"; //text to display
+        paint.setColor(Color.BLUE); //color of text
+        paint.setStyle(Paint.Style.STROKE); //set style
+        canvas.drawRect(box, paint); //draw rectangle for boundary box
+        paint.setStrokeWidth(3.0f); // thickness
+        paint.setStyle(Paint.Style.FILL_AND_STROKE);
+        canvas.drawText(title, box.left, box.bottom, paint); //location of text
+        paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 20, getResources().getDisplayMetrics())); // text size
+
     }
 
-    public void setdetectionResults(final List<ImageClassifier.Recognition> detectionResults) {
-        this.detectionResults = detectionResults;
+    public void setdetectionResult(ImageClassifier.Recognition detectionResult) {
+        this.detectionResult = detectionResult;
         postInvalidate();
     }
 
-    //calculate the size of rectangle
-    private RectF recalculateSize(RectF rect) {
+    //calculate rectangle coordinate
+    public RectF recalculateSize(RectF rect) {
         int padding = 5;
         float overlayViewHeight = getHeight() - detectionResultsViewHeight;
         float sizeToMultiply = Math.min((float) getWidth() / (float) INPUT_SIZE, overlayViewHeight / (float) INPUT_SIZE);
@@ -83,5 +87,5 @@ public class OverlayView extends View {
         RectF newRect = new RectF(left, top, right, bottom);
         return newRect;
     }
-
+ */
 }
