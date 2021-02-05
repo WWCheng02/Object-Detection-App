@@ -13,24 +13,29 @@ public class ImageUtilities {
     // it is 2 ^ 18 - 1, used to clamp the RGB values before their ranges are normalized to eight bits
     private static int kMaxChannelValue = 262143;
 
-    //convert YUV to RGB
-    public static int[] convertYUVToARGB(final Image image, final int previewWidth, final int previewHeight) {
-        final Image.Plane[] planes = image.getPlanes();
-        byte[][] yuvBytes = fillBytes(planes);
-        return ImageUtilities.convertYUV420ToARGB8888(yuvBytes[0], yuvBytes[1], yuvBytes[2], previewWidth, previewHeight, planes[0].getRowStride(), planes[1].getRowStride(), planes[1].getPixelStride());
-    }
+    public static void convertYUV420SPToARGB8888(
+            byte[] input,
+            int width,
+            int height,
+            int[] output) {
 
-    private static byte[][] fillBytes(final Image.Plane[] planes) {
-        byte[][] yuvBytes = new byte[3][];
-        for (int i = 0; i < planes.length; ++i) {
-            final ByteBuffer buffer = planes[i].getBuffer();
-            if (yuvBytes[i] == null) {
-                yuvBytes[i] = new byte[buffer.capacity()];
+        // Java implementation of YUV420SP to ARGB8888 converting
+        final int frameSize = width * height;
+        for (int j = 0, yp = 0; j < height; j++) {
+            int uvp = frameSize + (j >> 1) * width;
+            int u = 0;
+            int v = 0;
+
+            for (int i = 0; i < width; i++, yp++) {
+                int y = 0xff & input[yp];
+                if ((i & 1) == 0) {
+                    v = 0xff & input[uvp++];
+                    u = 0xff & input[uvp++];
+                }
+
+                output[yp] = YUV2RGB(y, u, v);
             }
-            buffer.get(yuvBytes[i]);
         }
-
-        return yuvBytes;
     }
 
     private static int YUV2RGB(int y, int u, int v) {
@@ -58,8 +63,16 @@ public class ImageUtilities {
 
 
     //convert YUV420 to ARGB8888
-    public static int[] convertYUV420ToARGB8888(byte[] yData, byte[] uData, byte[] vData, int width, int height, int yRowStride, int uvRowStride, int uvPixelStride) {
-        int [] out = new int[width*height];
+    public static void convertYUV420ToARGB8888(
+            byte[] yData,
+            byte[] uData,
+            byte[] vData,
+            int width,
+            int height,
+            int yRowStride,
+            int uvRowStride,
+            int uvPixelStride,
+            int[] out) {
         int yp = 0;
         for (int j = 0; j < height; j++) {
             int pY = yRowStride * j;
@@ -68,24 +81,13 @@ public class ImageUtilities {
             for (int i = 0; i < width; i++) {
                 int uv_offset = pUV + (i >> 1) * uvPixelStride;
 
-                out[yp++] = YUV2RGB(0xff & yData[pY + i], 0xff & uData[uv_offset], 0xff & vData[uv_offset]);
+                out[yp++] = YUV2RGB(
+                        0xff & yData[pY + i],
+                        0xff & uData[uv_offset],
+                        0xff & vData[uv_offset]);
             }
         }
-        return out;
     }
-
-    //compute allocated size
-    public static int getYUVByteSize(final int width, final int height) {
-        // luminance plane needs 1 byte per pixel
-        final int ySize = width * height;
-
-        // UV plane works on 2x2 blocks, dimensions with odd size must be rounded up
-        // Each 2x2 block takes 2 bytes to encode, one each for U and V
-        final int uvSize = ((width + 1) / 2) * ((height + 1) / 2) * 2;
-
-        return ySize + uvSize;
-    }
-
 
      //returns a transformation matrix, do cropping and rotation
     public static Matrix getTransformationMatrix(int sourceWidth, int sourceHeight, int destinationWidth, int destinationHeight, int rotationApplied, boolean maintainAspectRatio) {
