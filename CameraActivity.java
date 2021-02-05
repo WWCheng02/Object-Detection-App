@@ -7,6 +7,9 @@ import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.Image.Plane;
+import android.media.ImageReader;
 import android.os.Bundle;
 
 import android.Manifest;
@@ -15,13 +18,16 @@ import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Trace;
 import android.util.Log;
 import android.util.Size;
+import android.view.Surface;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import java.nio.ByteBuffer;
+
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
-    private static final String LOGGING_TAG = "Application";
     private static final int PERMISSIONS_REQUEST = 1;
     private Handler handler;
     private HandlerThread handlerThread;
@@ -30,10 +36,18 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     private static final Logger LOGGER = new Logger();
     protected abstract int getLayoutId();
     protected abstract Size getWantedPreviewSize();
+    private boolean computing = false;
+    private Runnable imageConverter;
+    private byte[][] yuvBytes = new byte[3][];
+    private int[] rgbBytes = null;
+    private int yRowStride;
+    private Runnable postInferenceCallback;
+
 
     //create camera activity
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
+        LOGGER.d("onCreate " + this);
         super.onCreate(null);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); //to keep the screen on
 
@@ -47,8 +61,113 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         }
     }
 
+    protected int[] getRgbBytes() {
+        imageConverter.run();
+        return rgbBytes;
+    }
+
+    protected byte[] getLuminance() {
+        return yuvBytes[0];
+    }
+
+    @Override
+    public void onImageAvailable(final ImageReader reader) {
+        //We need wait until we have some size from onPreviewSizeChosen
+        if (previewWidth == 0 || previewHeight == 0) {
+            return;
+        }
+        if (rgbBytes == null) {
+            rgbBytes = new int[previewWidth * previewHeight];
+        }
+        try {
+            final Image image = reader.acquireLatestImage();
+
+            if (image == null) {
+                return;
+            }
+
+            if (computing) {
+                image.close();
+                return;
+            }
+            computing = true;
+            Trace.beginSection("imageAvailable");
+            final Plane[] planes = image.getPlanes();
+            fillBytes(planes, yuvBytes);
+            yRowStride = planes[0].getRowStride();
+            final int uvRowStride = planes[1].getRowStride();
+            final int uvPixelStride = planes[1].getPixelStride();
+
+            imageConverter =
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            ImageUtilities.convertYUV420ToARGB8888(
+                                    yuvBytes[0],
+                                    yuvBytes[1],
+                                    yuvBytes[2],
+                                    previewWidth,
+                                    previewHeight,
+                                    yRowStride,
+                                    uvRowStride,
+                                    uvPixelStride,
+                                    rgbBytes);
+                        }
+                    };
+
+            postInferenceCallback =
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            image.close();
+                            computing = false;
+                        }
+                    };
+
+            sceneProcessing();
+        } catch (final Exception e) {
+            LOGGER.e(e, "Exception!");
+            Trace.endSection();
+            return;
+        }
+        Trace.endSection();
+    }
+
+    protected void fillBytes(final Plane[] planes, final byte[][] yuvBytes) {
+        // Because of the variable row stride it's not possible to know in
+        // advance the actual necessary dimensions of the yuv planes.
+        for (int i = 0; i < planes.length; ++i) {
+            final ByteBuffer buffer = planes[i].getBuffer();
+            if (yuvBytes[i] == null) {
+                LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
+                yuvBytes[i] = new byte[buffer.capacity()];
+            }
+            buffer.get(yuvBytes[i]);
+        }
+    }
+
+    protected void readyForNextImage() {
+        if (postInferenceCallback != null) {
+            postInferenceCallback.run();
+        }
+    }
+
+    protected int getScreenOrientation() {
+        switch (getWindowManager().getDefaultDisplay().getRotation()) {
+            case Surface.ROTATION_270:
+                return 270;
+            case Surface.ROTATION_180:
+                return 180;
+            case Surface.ROTATION_90:
+                return 90;
+            default:
+                return 0;
+        }
+    }
+
     @Override
     public synchronized void onResume() {
+        LOGGER.d("onResume " + this);
         super.onResume();
         handlerThread = new HandlerThread("inference");
         handlerThread.start();
@@ -56,8 +175,17 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
 
     @Override
+    public synchronized void onStart() {
+        LOGGER.d("onStart " + this);
+        super.onStart();
+    }
+
+    @Override
     public synchronized void onPause() {
+        LOGGER.d("onPause " + this);
+
         if (!isFinishing()) {
+            LOGGER.d("Requesting finish");
             finish();
         }
 
@@ -66,11 +194,28 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
             handlerThread.join();
             handlerThread = null;
             handler = null;
-        } catch (final InterruptedException ex) {
-            Log.e(LOGGING_TAG, "Exception: " + ex.getMessage());
+        } catch (final InterruptedException e) {
+            LOGGER.e(e, "Exception!");
         }
 
+        /*if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+        }*/
+
         super.onPause();
+    }
+
+    @Override
+    public synchronized void onStop() {
+        LOGGER.d("onStop " + this);
+        super.onStop();
+    }
+
+    @Override
+    public synchronized void onDestroy() {
+        LOGGER.d("onDestroy " + this);
+        super.onDestroy();
     }
 
     protected synchronized void runInBackground(final Runnable runnable) {
@@ -145,13 +290,27 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
 
     protected void setFragment() {
-        Camera2BasicFragment cameraConnectionFragment = new Camera2BasicFragment();
-        cameraConnectionFragment.addConnectionListener((final Size size, final int rotation) -> CameraActivity.this.onPreviewSizeSelected(size, rotation));
-        cameraConnectionFragment.addImageAvailableListener(this);
+        String cameraId = chooseCamera();
+
+        Camera2BasicFragment camera2Fragment =
+                Camera2BasicFragment.newInstance(
+                        new Camera2BasicFragment.ConnectionCallback() {
+                            @Override
+                            public void onPreviewSizeSelected(final Size size, final int rotation) {
+                                previewHeight = size.getHeight();
+                                previewWidth = size.getWidth();
+                                CameraActivity.this.onPreviewSizeSelected(size, rotation);
+                            }
+                        },
+                        this,
+                        getLayoutId(),
+                        getWantedPreviewSize());
+
+        camera2Fragment.setCamera(cameraId);
 
         getFragmentManager()
                 .beginTransaction()
-                .replace(R.id.container, cameraConnectionFragment)
+                .replace(R.id.container, camera2Fragment)
                 .commit();
     }
 
@@ -172,12 +331,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         }
     }
 
-    public void addCallback(final OverlayView.DrawCallback callback) {
-        @SuppressLint("WrongViewCast") final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
-        if (overlay != null) {
-            overlay.addCallback(callback);
-        }
-    }
-
     protected abstract void onPreviewSizeSelected(final Size size, final int rotation);
+
+    protected abstract void sceneProcessing();
 }
