@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.RectF;
 
 import java.util.List;
+import java.util.Objects;
 
 //object recognition interface
 public interface ImageClassifier {
@@ -71,7 +72,10 @@ public interface ImageClassifier {
 
             return resultString.trim(); //trim white space of both ends of string
         }
+
     }
+
+
 
     List<Recognition> detectObjects(Bitmap bitmap);
 
